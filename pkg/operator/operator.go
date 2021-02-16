@@ -6,7 +6,9 @@ import (
 
 	"github.com/aquasecurity/starboard/pkg/config"
 	"github.com/aquasecurity/starboard/pkg/configauditreport"
+	"github.com/aquasecurity/starboard/pkg/ext"
 	"github.com/aquasecurity/starboard/pkg/kube"
+	"github.com/aquasecurity/starboard/pkg/kubebench"
 	"github.com/aquasecurity/starboard/pkg/operator/controller"
 	"github.com/aquasecurity/starboard/pkg/operator/etc"
 	"github.com/aquasecurity/starboard/pkg/starboard"
@@ -150,6 +152,21 @@ func Run(buildInfo starboard.BuildInfo, operatorConfig etc.Config) error {
 		ReadWriter:    configauditreport.NewReadWriter(mgr.GetClient(), kubeClientset),
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to setup configauditreport reconciler: %w", err)
+	}
+
+	// TODO Consider introducing env config to enable/disable CIS Benchmark reconciler
+	// Running in only in AllNamespaces install mode does not require changes to cache configs.
+	if installMode == etc.AllNamespaces {
+		if err = (&controller.CISKubeBenchReportReconciler{
+			Logger:     ctrl.Log.WithName("reconciler").WithName("ciskubebenchreport"),
+			Config:     operatorConfig,
+			Client:     mgr.GetClient(),
+			LogsReader: logsReader,
+			ReadWriter: kubebench.NewReadWriter(mgr.GetClient()),
+			Plugin:     kubebench.NewKubeBenchPlugin(ext.NewSystemClock(), starboardConfig),
+		}).SetupWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to setup ciskubebenchreport reconciler: %w", err)
+		}
 	}
 
 	setupLog.Info("Starting controllers manager")
